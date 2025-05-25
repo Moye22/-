@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>時間線生成器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0f1419;
+            color: #e6e6e6;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            padding: 20px 0;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 1.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .header .subtitle {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            height: calc(100vh - 80px);
+        }
+
+        .sidebar {
+            background: #1a1f2e;
+            border-right: 1px solid #2d3748;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .main-content {
+            background: #0f1419;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .section {
+            background: #1a1f2e;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid #2d3748;
+        }
+
+        .section-title {
+            color: #e6e6e6;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #2d3748;
+            padding-bottom: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+            color: #a0aec0;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 8px 12px;
+            background: #2d3748;
+            border: 1px solid #4a5568;
+            border-radius: 4px;
+            color: #e6e6e6;
+            font-size: 0.85rem;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        .file-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            border: 2px dashed #4a5568;
+            border-radius: 4px;
+            background: #2d3748;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.8rem;
+            color: #a0aec0;
+        }
+
+        .file-input-display:hover {
+            border-color: #3b82f6;
+            background: #374151;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            margin-bottom: 8px;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #1a1f2e;
+            border-radius: 8px;
+            border: 1px solid #2d3748;
+        }
+
+        .preview-title {
+            color: #e6e6e6;
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+        }
+
+        .switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: #4a5568;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .switch.active {
+            background: #3b82f6;
+        }
+
+        .switch::before {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+        }
+
+        .switch.active::before {
+            transform: translateX(20px);
+        }
+
+        .timeline-container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            min-height: 400px;
+            color: #1a202c;
+        }
+
+        .timeline-container.dark {
+            background: #1a202c;
+            color: #e6e6e6;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, #3b82f6, #1e40af);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(59, 130, 246, 0.05);
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .timeline-container.dark .timeline-item {
+            background: rgba(59, 130, 246, 0.1);
+            border-left-color: #60a5fa;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -35px;
+            top: 25px;
+            width: 12px;
+            height: 12px;
+            background: #3b82f6;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .timeline-container.dark .timeline-item::before {
+            border-color: #1a202c;
+            background: #60a5fa;
+        }
+
+        .timeline-date {
+            position: absolute;
+            left: -120px;
+            top: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #6b7280;
+            background: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .timeline-container.dark .timeline-date {
+            background: #374151;
+            color: #d1d5db;
+            border-color: #4b5563;
+        }
+
+        .timeline-content h3 {
+            color: #1e40af;
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .timeline-container.dark .timeline-content h3 {
+            color: #60a5fa;
+        }
+
+        .timeline-content p {
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .timeline-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .timeline-tag {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .timeline-container.dark .timeline-tag {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+        }
+
+        .timeline-image {
+            width: 100%;
+            max-width: 300px;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6b7280;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .csv-format {
+            background: #2d3748;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.75rem;
+            color: #a0aec0;
+            white-space: pre-wrap;
+            margin-top: 10px;
+        }
+
+        .success-message {
+            background: #065f46;
+            color: #a7f3d0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .error-message {
+            background: #991b1b;
+            color: #fecaca;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+            時間線生成器
+        </h1>
+        <div class="subtitle">互動式數據可視化工具</div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="section">
+                <div class="section-title">數據來源</div>
+                
+                <div class="form-group">
+                    <div class="file-input-wrapper">
+                        <input type="file" id="csvFile" class="file-input" accept=".csv" />
+                        <div class="file-input-display">
+                            📁 選擇CSV檔案
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="loadSampleData()">載入範例數據</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="csvData">或直接輸入CSV數據:</label>
+                    <textarea id="csvData" placeholder="date,title,description,tags,image_url&#10;2024-01-01,事件標題,事件描述,標籤1;標籤2,圖片網址"></textarea>
+                </div>
+
+                <button class="btn btn-success" onclick="parseCSV()">解析數據</button>
+                <button class="btn btn-secondary" onclick="clearData()">清除數據</button>
+
+                <div id="successMessage" class="success-message"></div>
+                <div id="errorMessage" class="error-message"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">CSV 格式說明</div>
+                <div class="csv-format">支援您的表格格式：
+• date - 日期
+• virtual_date - 虛擬日期
+• time - 時間
+• subject - 主題
+• description - 描述
+• location - 地點
+• quote_content - 引用內容
+• image_url - 圖片網址
+• tag_color - 標籤顏色
+
+以及其他所有欄位...</div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">導出選項</div>
+                <button class="btn btn-primary" onclick="downloadHTML()">下載HTML檔案</button>
+                <button class="btn btn-secondary" onclick="copyHTML()">複製HTML代碼</button>
+                <button class="btn btn-secondary" onclick="downloadCSV()">下載CSV範本</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="preview-header">
+                <div class="preview-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    時間線預覽
+                </div>
+                <div class="toggle-switch">
+                    <span>暗色模式</span>
+                    <div class="switch" id="darkModeToggle" onclick="toggleDarkMode()"></div>
+                </div>
+            </div>
+
+            <div class="timeline-container" id="timelineContainer">
+                <div class="empty-state">
+                    <h3>還沒有時間線數據</h3>
+                    <p>請上傳CSV檔案或輸入數據來生成時間線</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timelineData = [];
+        let isDarkMode = false;
+
+        // 載入範例數據
+        function loadSampleData() {
+            const sampleCSV = `date,virtual_date,time,subject,subject_1_prep,subject_1,action,object,object_1_prep,object_1,topic,description,location_prep,location,location_1_prep,location_1,location_2_prep,location_2,quote_author,quote_content,note,ref_site,ref_url,channel_prep,channel,content_carrier,image_url,image_position,image_caption,tag_color
+2024-12-18,第一天,,,王朝政治議題,議會召開集會,討論對對手民進黨政策,三個議題,,,,,通民意和黨高層,,,會議在立法會,公眾,立法委員,司法委員會,高官,非常重要的會議,會推動相關法案,有趣時間,民調,#LINK,第一天,第四天,內容來源,圖片1,第一個,議會內部,[COLOR]`;
+            
+            document.getElementById('csvData').value = sampleCSV;
+            showMessage('範例數據已載入！', 'success');
+        }
+
+        // 處理CSV檔案上傳
+        document.getElementById('csvFile').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // 處理編碼問題，嘗試UTF-8解碼
+                    let content = e.target.result;
+                    
+                    // 如果檢測到可能的編碼問題，嘗試不同的解碼方式
+                    if (content.includes('ï»¿')) {
+                        content = content.replace('ï»¿', ''); // 移除BOM
+                    }
+                    
+                    document.getElementById('csvData').value = content;
+                    showMessage('CSV檔案已載入！', 'success');
+                };
+                reader.onerror = function() {
+                    showMessage('檔案讀取失敗，請確認檔案格式正確', 'error');
+                };
+                // 使用UTF-8編碼讀取
+                reader.readAsText(file, 'UTF-8');
+            }
+        });
+
+        // 解析CSV數據
+        function parseCSV() {
+            const csvText = document.getElementById('csvData').value.trim();
+            if (!csvText) {
+                showMessage('請先輸入或上傳CSV數據', 'error');
+                return;
+            }
+
+            try {
+                const lines = csvText.split('\n');
+                const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+                
+                // 檢查是否有日期欄位
+                const hasDate = headers.includes('date') || headers.includes('virtual_date');
+                if (!hasDate) {
+                    showMessage('需要date或virtual_date欄位', 'error');
+                    return;
+                }
+
+                timelineData = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+
+                    const values = parseCSVLine(line);
+                    if (values.length < headers.length) continue;
+
+                    const item = {};
+                    headers.forEach((header, index) => {
+                        item[header] = values[index] || '';
+                    });
+
+                    // 處理日期格式
+                    const dateField = item.date || item.virtual_date;
+                    if (dateField) {
+                        // 如果是"第一天"這種格式，保持原樣
+                        if (dateField.includes('第') && dateField.includes('天')) {
+                            item.displayDate = dateField;
+                        } else {
+                            const date = new Date(dateField);
+                            if (!isNaN(date.getTime())) {
+                                item.parsedDate = date;
+                                item.displayDate = date.toLocaleDateString('zh-TW', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                });
+                            } else {
+                                item.displayDate = dateField;
+                            }
+                        }
+                    }
+
+                    // 建立標題
+                    item.displayTitle = item.subject || item.topic || item.action || '無標題';
+                    
+                    // 建立描述
+                    let descParts = [];
+                    if (item.description) descParts.push(item.description);
+                    if (item.location) descParts.push(`地點：${item.location}`);
+                    if (item.quote_content) descParts.push(`引用：${item.quote_content}`);
+                    if (item.note) descParts.push(`備註：${item.note}`);
+                    item.displayDescription = descParts.join(' | ') || '無描述';
+
+                    // 處理標籤
+                    const tagFields = ['subject', 'action', 'object', 'topic', 'channel'];
+                    item.tagList = [];
+                    tagFields.forEach(field => {
+                        if (item[field] && item[field].trim()) {
+                            item.tagList.push(item[field].trim());
+                        }
+                    });
+
+                    timelineData.push(item);
+                }
+
+                // 嘗試按日期排序，如果無法解析則保持原順序
+                timelineData.sort((a, b) => {
+                    if (a.parsedDate && b.parsedDate) {
+                        return a.parsedDate - b.parsedDate;
+                    }
+                    return 0;
+                });
+
+                renderTimeline();
+                showMessage(`成功解析 ${timelineData.length} 條數據`, 'success');
+            } catch (error) {
+                showMessage('CSV解析失敗：' + error.message, 'error');
+            }
+        }
+
+        // 解析CSV行（處理逗號在引號內的情況）
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            
+            result.push(current.trim());
+            return result;
+        }
+
+        // 渲染時間線
+        function renderTimeline() {
+            const container = document.getElementById('timelineContainer');
+            
+            if (timelineData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>還沒有時間線數據</h3>
+                        <p>請上傳CSV檔案或輸入數據來生成時間線</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="timeline">';
+            
+            timelineData.forEach(item => {
+                const dateStr = item.displayDate || item.date || item.virtual_date || '未知日期';
+
+                html += `
+                    <div class="timeline-item">
+                        <div class="timeline-date">${dateStr}</div>
+                        <div class="timeline-content">
+                            <h3>${escapeHtml(item.displayTitle)}</h3>
+                            <p>${escapeHtml(item.displayDescription)}</p>
+                            ${item.time ? `<p><strong>時間：</strong>${escapeHtml(item.time)}</p>` : ''}
+                            ${item.image_url ? `<img src="${item.image_url}" alt="${escapeHtml(item.displayTitle)}" class="timeline-image" onerror="this.style.display='none'">` : ''}
+                            ${item.tagList && item.tagList.length > 0 ? `
+                                <div class="timeline-tags">
+                                    ${item.tagList.map(tag => `<span class="timeline-tag">${escapeHtml(tag)}</span>`).join('')}
+                                </div>
+                            ` : ''}
+                            ${item.ref_url ? `<p><a href="${item.ref_url}" target="_blank" style="color: #3b82f6;">參考連結</a></p>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        // HTML轉義
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 切換暗色模式
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            const toggle = document.getElementById('darkModeToggle');
+            const container = document.getElementById('timelineContainer');
+            
+            if (isDarkMode) {
+                toggle.classList.add('active');
+                container.classList.add('dark');
+            } else {
+                toggle.classList.remove('active');
+                container.classList.remove('dark');
+            }
+        }
+
+        // 生成完整的HTML
+        function generateFullHTML() {
+            const container = document.getElementById('timelineContainer');
+            const isDark = container.classList.contains('dark');
+            
+            return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>時間線</title>
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; margin: 0; padding: 20px; background: ${isDark ? '#0f1419' : '#f9fafb'}; color: ${isDark ? '#e6e6e6' : '#1a202c'}; }
+        .timeline-container { background: ${isDark ? '#1a202c' : 'white'}; border-radius: 8px; padding: 30px; max-width: 800px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .timeline { position: relative; padding-left: 30px; }
+        .timeline::before { content: ''; position: absolute; left: 15px; top: 0; bottom: 0; width: 2px; background: linear-gradient(to bottom, #3b82f6, #1e40af); }
+        .timeline-item { position: relative; margin-bottom: 30px; padding: 20px; background: ${isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.05)'}; border-radius: 8px; border-left: 4px solid #3b82f6; }
+        .timeline-item::before { content: ''; position: absolute; left: -35px; top: 25px; width: 12px; height: 12px; background: #3b82f6; border: 3px solid ${isDark ? '#1a202c' : 'white'}; border-radius: 50%; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+        .timeline-date { position: absolute; left: -120px; top: 20px; font-size: 0.85rem; font-weight: 600; color: #6b7280; background: ${isDark ? '#374151' : 'white'}; padding: 4px 8px; border-radius: 4px; border: 1px solid ${isDark ? '#4b5563' : '#e5e7eb'}; }
+        .timeline-content h3 { color: ${isDark ? '#60a5fa' : '#1e40af'}; margin-bottom: 8px; font-size: 1.1rem; }
+        .timeline-content p { line-height: 1.6; margin-bottom: 10px; }
+        .timeline-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .timeline-tag { background: ${isDark ? 'rgba(59,130,246,0.2)' : '#dbeafe'}; color: ${isDark ? '#93c5fd' : '#1e40af'}; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+        .timeline-image { width: 100%; max-width: 300px; height: 200px; object-fit: cover; border-radius: 6px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="timeline-container">
+        ${container.innerHTML}
+    </div>
+</body>
+</html>`;
+        }
+
+        // 下載HTML檔案
+        function downloadHTML() {
+            if (timelineData.length === 0) {
+                showMessage('請先解析CSV數據', 'error');
+                return;
+            }
+
+            const html = generateFullHTML();
+            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '時間線.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showMessage('HTML檔案已下載！', 'success');
+        }
+
+        // 複製HTML代碼
+        function copyHTML() {
+            if (timelineData.length === 0) {
+                showMessage('請先解析CSV數據', 'error');
+                return;
+            }
+
+            const html = generateFullHTML();
+            navigator.clipboard.writeText(html).then(() => {
+                showMessage('HTML代碼已複製到剪貼板！', 'success');
+            }).catch(() => {
+                // 備用方案
+                const textarea = document.createElement('textarea');
+                textarea.value = html;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showMessage('HTML代碼已複製到剪貼板！', 'success');
+            });
+        }
+
+            // 下載CSV範本
+        function downloadCSV() {
+            const csvTemplate = `date,virtual_date,time,subject,subject_1_prep,subject_1,action,object,object_1_prep,object_1,topic,description,location_prep,location,location_1_prep,location_1,location_2_prep,location_2,quote_author,quote_content,note,ref_site,ref_url,channel_prep,channel,content_carrier,image_url,image_position,image_caption,tag_color
+2024-12-18,第一天,上午9:00,重要會議,關於,政策討論,召開,會議,在,立法院,主題,討論重要議題,於,台北,位於,立法院,在,會議室,專家,這是一個重要的政策決定,需要進一步討論,政府網站,https://example.com,透過,官方渠道,新聞稿,https://image.url,頂部,會議現場,#3b82f6
+2024-12-19,第二天,下午2:00,另一個事件,,,進行,討論,,,,,詳細說明事件內容,,,,,,,引用內容,備註信息,,,,,,,,,`;
+            
+            const blob = new Blob(['\ufeff' + csvTemplate], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'timeline_template.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showMessage('CSV範本已下載！', 'success');
+        }
+
+        // 清除數據
+        function clearData() {
+            timelineData = [];
+            document.getElementById('csvData').value = '';
+            document.getElementById('csvFile').value = '';
+            renderTimeline();
+            showMessage('數據已清除', 'success');
+        }
+
+        // 顯示訊息
+        function showMessage(message, type) {
+            const successEl = document.getElementById('successMessage');
+            const errorEl = document.getElementById('errorMessage');
+            
+            // 隱藏所有訊息
+            successEl.style.display = 'none';
+            errorEl.style.display = 
