@@ -1,0 +1,1315 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import TimelineViewer from "@/components/timeline-viewer"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Loader2, Copy, Check, FileDown } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import Link from "next/link"
+
+export default function Home() {
+  const [csvUrl, setCsvUrl] = useState("")
+  const [csvText, setCsvText] = useState("")
+  const [data, setData] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [activeTab, setActiveTab] = useState("url")
+  const [embedCode, setEmbedCode] = useState("")
+  const [copied, setCopied] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [title, setTitle] = useState("時間線生成器")
+  const [subtitle, setSubtitle] = useState("互動式數據可視化工具")
+  const [darkMode, setDarkMode] = useState(true)
+  const [dateDisplayMode, setDateDisplayMode] = useState<"real" | "virtual" | "both">("both")
+
+  // 初始化時設置暗色模式
+  useEffect(() => {
+    // 檢查本地存儲中是否有暗色模式設置
+    const savedDarkMode = localStorage.getItem("darkMode")
+    if (savedDarkMode !== null) {
+      setDarkMode(savedDarkMode === "true")
+    }
+
+    // 應用暗色模式
+    document.documentElement.classList.toggle("dark", darkMode)
+  }, [])
+
+  // 當暗色模式狀態改變時更新
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode)
+    localStorage.setItem("darkMode", darkMode.toString())
+  }, [darkMode])
+
+  // 修改CSV模板下載函數，確保包含location_2_prep和location_2字段
+  const downloadUtf8CsvTemplate = () => {
+    const csvTemplate = `date,virtual_date,time,subject,subject_1_prep,subject_1,action,object,object_1_prep,object_1,topic,description,location_prep,location,location_1_prep,location_1,location_2_prep,location_2,quote_author,quote_content,note,ref_title,ref_url,channel_prep,channel,content_carrier,image_url,image_position,image_caption,tag_color
+2023-05-15,格拉利昂4122年,下午3點,主角,和,配角,執行,任務,與,目標,主題標籤,這是一段**粗體**和*斜體*以及[color:red]紅色[/color]文字的描述。\n這是第二行描述。,於,地點,的,詳細位置,內,特定區域,四星人\n四星人\n四星人,社會很公平，你要得到什麼，你就要付出那個代價。\n你價格了，你的精力就不夠給你拿來成功了。\n台灣年輕人競爭力完全不如大陸人，我們說台灣人就芒果乾，但是要論素養或營養，其實很快就被大陸人趕上了，我們自以為的「優勢」，不知說是在溫室中成長花朵特有的素質。,右側註解內容,參考資料標題,https://example.com,來自,渠道名稱,內容載體,https://example.com/image.jpg,top,圖片說明,{"主角":"#ff5733"}`
+
+    // 創建一個Blob對象，指定UTF-8編碼
+    const blob = new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), csvTemplate], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const element = document.createElement("a")
+    element.href = url
+    element.download = "storyline-template.csv"
+    document.body.appendChild(element)
+    element.click()
+    document.body.removeChild(element)
+    URL.revokeObjectURL(url)
+  }
+
+  // 修改handleDownloadTemplate函數，使用UTF-8編碼
+  const handleDownloadTemplate = () => {
+    downloadUtf8CsvTemplate()
+  }
+
+  // 添加一個新的函數來處理Google Sheets的CSV URL
+  const handleGoogleSheetsUrl = (url: string) => {
+    // 檢查是否是Google Sheets URL
+    if (url.includes("docs.google.com/spreadsheets")) {
+      // 檢查是否已經是發布格式
+      if (url.includes("/pub?") && url.includes("output=csv")) {
+        // 確保URL包含正確的字符集參數
+        if (!url.includes("charset=utf-8")) {
+          return url + (url.includes("?") ? "&" : "?") + "charset=utf-8"
+        }
+        return url // 已經是正確格式
+      }
+
+      // 處理各種Google Sheets URL格式
+
+      // 1. 編輯URL格式: /d/{id}/edit
+      const editMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)\/edit/)
+      if (editMatch && editMatch[1]) {
+        const docId = editMatch[1]
+        // 優先使用發布URL格式，這種方式不需要用戶登錄
+        return `https://docs.google.com/spreadsheets/d/${docId}/pub?output=csv&charset=utf-8`
+      }
+
+      // 2. 查看URL格式: /d/{id}/view
+      const viewMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)\/view/)
+      if (viewMatch && viewMatch[1]) {
+        const docId = viewMatch[1]
+        return `https://docs.google.com/spreadsheets/d/${docId}/pub?output=csv&charset=utf-8`
+      }
+
+      // 3. 簡單ID格式: /d/{id}
+      const simpleMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)(?:\/|$)/)
+      if (simpleMatch && simpleMatch[1]) {
+        const docId = simpleMatch[1]
+        return `https://docs.google.com/spreadsheets/d/${docId}/pub?output=csv&charset=utf-8`
+      }
+
+      // 4. 發布URL格式: /d/e/{id}/pub
+      const pubMatch = url.match(/\/d\/e\/([a-zA-Z0-9-_]+)\/pub/)
+      if (pubMatch) {
+        // 已經是發布URL，只需添加output=csv和charset=utf-8
+        if (!url.includes("output=csv")) {
+          url = url + (url.includes("?") ? "&" : "?") + "output=csv"
+        }
+        if (!url.includes("charset=utf-8")) {
+          url = url + (url.includes("?") ? "&" : "?") + "charset=utf-8"
+        }
+        return url
+      }
+
+      // 5. 完整發布URL格式: /d/e/2PACX-{id}/pub
+      const fullPubMatch = url.match(/\/d\/e\/(2PACX-[a-zA-Z0-9-_]+)\/pub/)
+      if (fullPubMatch) {
+        // 已經是完整發布URL，只需添加output=csv和charset=utf-8
+        if (!url.includes("output=csv")) {
+          url = url + (url.includes("?") ? "&" : "?") + "output=csv"
+        }
+        if (!url.includes("charset=utf-8")) {
+          url = url + (url.includes("?") ? "&" : "?") + "charset=utf-8"
+        }
+        return url
+      }
+
+      // 6. 處理gid參數（特定工作表）
+      const gidMatch = url.match(/gid=([0-9]+)/)
+      const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : ""
+
+      // 7. 處理已發布但格式不正確的URL
+      if (url.includes("/pubhtml")) {
+        return url.replace("/pubhtml", "/pub?output=csv&charset=utf-8")
+      }
+
+      // 8. 處理特殊格式的發布URL
+      const specialPubMatch = url.match(/\/spreadsheets\/u\/\d+\/d\/([a-zA-Z0-9-_]+)/)
+      if (specialPubMatch && specialPubMatch[1]) {
+        const docId = specialPubMatch[1]
+        return `https://docs.google.com/spreadsheets/d/${docId}/pub?output=csv&charset=utf-8${gidParam}`
+      }
+
+      // 9. 如果URL包含ID但沒有匹配上述任何格式，嘗試構建一個標準的發布URL
+      const generalIdMatch = url.match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+      if (generalIdMatch && generalIdMatch[1]) {
+        const docId = generalIdMatch[1]
+        return `https://docs.google.com/spreadsheets/d/${docId}/pub?output=csv&charset=utf-8${gidParam}`
+      }
+    }
+
+    // 如果不是Google Sheets URL或無法處理，返回原始URL
+    return url
+  }
+
+  // 修改示例URL，使用公開可訪問的示例
+  const handleUseExample = () => {
+    setCsvUrl(
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vRTu7LGLP2Z3yTRuxYkrAjb7YFQGWtuzj_DGmtIqDLux90NGR4SzZMIPIpYO4_3Nclh2SSLGOf6KW8n/pub?output=csv",
+    )
+  }
+
+  // 修改處理數據的函數，確保正確解析標籤顏色
+  const getGoogleSheetsInstructions = () => {
+    return `
+如何正確設置 Google Sheets 作為數據源:
+
+1. 打開您的 Google Sheets 文檔
+2. 點擊「檔案」>「發布到網路」
+3. 在「發布內容」下拉選單中選擇「整份文件」或特定工作表
+4. 在「發布為」下拉選單中選擇「逗號分隔值 (.csv)」
+5. 點擊「發布」按鈕
+6. 複製生成的連結（應該以 /pub 結尾）
+7. 確保您的文檔已設置為「任何人都可以查看」
+
+如果您仍然遇到問題，可以:
+- 複製 CSV 內容並粘貼到「直接輸入CSV」選項卡中
+  `
+  }
+
+  // 改進的CSV解析函數
+  const parseCSV = (csvText: string) => {
+    try {
+      // 處理BOM標記（UTF-8 with BOM）
+      if (csvText.charCodeAt(0) === 0xfeff) {
+        csvText = csvText.slice(1)
+      }
+
+      // 分割行，同時處理不同的換行符
+      const lines = csvText.split(/\r?\n/).filter((line) => line.trim())
+      if (lines.length === 0) return []
+
+      // 解析標題行
+      const headers = parseCSVLine(lines[0])
+
+      // 解析數據行
+      const result = []
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue
+
+        const values = parseCSVLine(lines[i])
+        if (values.length === 0) continue
+
+        const row: Record<string, any> = {}
+
+        // 確保所有標題都有對應的值，即使是空值
+        headers.forEach((header) => {
+          row[header] = ""
+        })
+
+        // 填充實際值
+        values.forEach((value, index) => {
+          if (index < headers.length) {
+            const header = headers[index]
+
+            // 處理空值
+            if (value === "") {
+              row[header] = ""
+              return
+            }
+
+            // 處理日期格式
+            if (header === "date" || header === "virtual_date") {
+              // 保持原始格式，不做特殊處理
+              row[header] = value
+            }
+            // 處理可能包含JSON的欄位
+            else if (header === "tag_color") {
+              try {
+                // 嘗試解析JSON
+                if (value.startsWith("{") && value.endsWith("}")) {
+                  row[header] = JSON.parse(value)
+                } else {
+                  row[header] = value
+                }
+              } catch (e) {
+                // 如果解析失敗，保留原始字符串
+                row[header] = value
+              }
+            }
+            // 處理多行文本和確保中文字符正確處理
+            else if (
+              header === "description" ||
+              header === "quote_content" ||
+              header === "note" ||
+              header.includes("location") ||
+              header.includes("subject") ||
+              header.includes("object") ||
+              header === "topic" ||
+              header === "channel" ||
+              header === "content_carrier" ||
+              header === "image_caption"
+            ) {
+              // 處理文本中的換行符（可能是實際換行或\\n字符串）
+              row[header] = value.replace(/\\n/g, "\n")
+              // 確保中文字符正確處理
+              try {
+                // 嘗試解碼任何可能被錯誤編碼的UTF-8字符
+                row[header] = decodeURIComponent(escape(row[header]))
+              } catch (e) {
+                // 如果解碼失敗，保留原始值
+                console.log("解碼失敗，保留原始值:", row[header])
+              }
+            }
+            // 其他欄位
+            else {
+              row[header] = value
+            }
+          }
+        })
+
+        result.push(row)
+      }
+
+      return result
+    } catch (e) {
+      console.error("解析CSV時出錯:", e)
+      throw new Error(`解析CSV時出錯: ${e.message}`)
+    }
+  }
+
+  // 添加一個新的函數來處理CSV文本輸入，使其更加健壯
+  const sanitizeCSVInput = (input: string) => {
+    if (!input) return ""
+
+    // 處理不同的換行符
+    let sanitized = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+
+    // 處理BOM標記
+    if (sanitized.charCodeAt(0) === 0xfeff) {
+      sanitized = sanitized.slice(1)
+    }
+
+    // 嘗試修復可能的中文編碼問題
+    try {
+      // 檢查是否有中文字符之間的空格
+      if (/[\u4e00-\u9fa5]\s+[\u4e00-\u9fa5]/.test(sanitized)) {
+        // 移除中文字符之間的空格
+        sanitized = sanitized.replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, "$1$2")
+      }
+    } catch (e) {
+      console.error("修復中文編碼問題時出錯:", e)
+    }
+
+    // 確保CSV有標題行
+    const lines = sanitized.split("\n").filter((line) => line.trim())
+    if (lines.length === 0) {
+      return ""
+    }
+
+    // 檢查並修復標題行
+    const headers = lines[0].split(",")
+    const requiredHeaders = ["date", "virtual_date"]
+    let hasRequiredHeader = false
+
+    for (const header of headers) {
+      if (requiredHeaders.includes(header.trim())) {
+        hasRequiredHeader = true
+        break
+      }
+    }
+
+    if (!hasRequiredHeader) {
+      // 如果缺少必要的標題，添加一個標準的標題行
+      sanitized =
+        "date,virtual_date,time,subject,subject_1_prep,subject_1,action,object,object_1_prep,object_1,topic,description,location_prep,location,location_1_prep,location_1,location_2_prep,location_2,quote_author,quote_content,note,ref_title,ref_url,image_url,image_position,image_caption,tag_color\n" +
+        sanitized
+    }
+
+    return sanitized
+  }
+
+  // 處理CSV行，正確處理引號和逗號
+  const parseCSVLine = (line: string) => {
+    // 檢查是否有編碼問題的跡象
+    let processedLine = line
+
+    // 嘗試修復可能的中文編碼問題
+    try {
+      // 檢查是否有中文字符之間的空格
+      if (/[\u4e00-\u9fa5]\s+[\u4e00-\u9fa5]/.test(processedLine)) {
+        // 移除中文字符之間的空格
+        processedLine = processedLine.replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, "$1$2")
+      }
+    } catch (e) {
+      console.error("修復中文編碼問題時出錯:", e)
+    }
+
+    const result = []
+    let inQuotes = false
+    let currentValue = ""
+    let i = 0
+
+    while (i < processedLine.length) {
+      const char = processedLine[i]
+      const nextChar = i < processedLine.length - 1 ? processedLine[i + 1] : null
+
+      if (char === '"' && !inQuotes) {
+        // 開始引號
+        inQuotes = true
+      } else if (char === '"' && nextChar === '"' && inQuotes) {
+        // 轉義的引號 ("") -> (")
+        currentValue += '"'
+        i++ // 跳過下一個引號
+      } else if (char === '"' && inQuotes) {
+        // 結束引號
+        inQuotes = false
+      } else if (char === "," && !inQuotes) {
+        // 欄位分隔符
+        result.push(currentValue)
+        currentValue = ""
+      } else {
+        // 普通字符
+        currentValue += char
+      }
+
+      i++
+    }
+
+    // 添加最後一個值
+    result.push(currentValue)
+
+    return result
+  }
+
+  // 修改示例CSV文本，確保包含location_2_prep和location_2字段
+  const handleUseExampleText = () => {
+    setCsvText(`date,virtual_date,time,subject,subject_1_prep,subject_1,action,object,object_1_prep,object_1,topic,description,location_prep,location,location_1_prep,location_1,location_2_prep,location_2,quote_author,quote_content,note,ref_title,ref_url,channel_prep,channel,content_carrier,image_url,image_position,image_caption,tag_color
+2023-05-15,格拉利昂4122年,黃昏,主角,和,配角,執行,任務,與,目標,主題標籤,這是一段**粗體**和*斜體*以及[color:red]紅色[/color]文字的描述。\\n這是第二行描述，展示換行功能。,於,神秘地點,的,秘密基地,內,特定區域,四星人,社會很公平，你要得到什麼，你就要付出那個代價。,右側註解內容\\n可以有多行,參考資料標題,https://example.com,來自,官方渠道,新聞報導,https://picsum.photos/800/400,top,頂部圖片說明,"{"主角":"#3b82f6","配角":"#10b981","任務":"#f59e0b"}"
+2023-05-16,第二天,上午10點,配角,協助,主角,完成,目標,,,重要事件,這裡展示了**格式化文本**的功能。\\n可以使用*斜體*、__下劃線__和~~刪除線~~。,在,另一個地點,的,會議室,中,角落,四星人,社會很公平，你要得到什麼，你就要付出那個代價。,這是第二天的註解,第二天參考,https://example.org,通過,社交媒體,官方賬號,https://picsum.photos/800/400,right,右側圖片說明,
+2023-05-17,第三天,下午3點,反派,對抗,主角,阻止,計劃,,,衝突,這是一個[color:#ff5733]自定義顏色[/color]的示例。\\n還可以使用[color:blue]藍色[/color]或[color:green]綠色[/color]。,於,衝突地點,的,前線,附近,戰場,四星人,社會很公平，你要得到什麼，你就要付出那個代價。\\n這是第二行引言，展示多行引言功能。\\n這是第三行引言，可以有更多行。,第三天的重要註解,衝突參考,https://example.net,經由,新聞,專題報導,https://picsum.photos/800/400,bottom,底部圖片說明,
+2023-05-18,最終日,傍晚,主角,與,配角,戰勝,反派,,,結局,這是最後一個事件的描述。\\n展示了完整的時間線功能。,在,最終地點,的,決戰場所,中,核心區域,四星人,社會很公平，你要得到什麼，你就要付出那個代價。,最終註解,最終參考,https://example.com/final,由,官方,聲明,https://picsum.photos/800/400,left,左側圖片說明,`)
+  }
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(embedCode)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // 生成嵌入代碼
+  const generateEmbedCode = () => {
+    const embedHtml = `<iframe src="${window.location.origin}/embed?data=${encodeURIComponent(
+      JSON.stringify(data),
+    )}&title=${encodeURIComponent(title)}&subtitle=${encodeURIComponent(
+      subtitle,
+    )}&darkMode=${darkMode}&dateDisplayMode=${dateDisplayMode}" width="100%" height="600" frameborder="0"></iframe>`
+
+    setEmbedCode(embedHtml)
+    return embedHtml
+  }
+
+  // 修改 downloadHtmlFile 函數，確保輸出的HTML與預覽一致
+  const downloadHtmlFile = () => {
+    // 創建一個完整的HTML文件，包含所有必要的CSS和JavaScript
+    const standaloneHtml = `
+<!DOCTYPE html>
+<html lang="zh-TW" class="${darkMode ? "dark" : ""}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} - 時間線查看器</title>
+  <style>
+    /* 基本樣式 */
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 222.2 84% 4.9%;
+      --card: 0 0% 100%;
+      --card-foreground: 222.2 84% 4.9%;
+      --border: 214.3 31.8% 91.4%;
+      --input: 214.3 31.8% 91.4%;
+      --primary: 221.2 83.2% 53.3%;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 210 40% 96.1%;
+      --secondary-foreground: 222.2 47.4% 11.2%;
+      --accent: 210 40% 96.1%;
+      --accent-foreground: 222.2 47.4% 11.2%;
+      --destructive: 0 84.2% 60.2%;
+      --destructive-foreground: 210 40% 98%;
+      --ring: 221.2 83.2% 53.3%;
+      --radius: 0.5rem;
+      --quote-bg-light: #f8fafc;
+      --quote-bg-dark: #1e293b;
+    }
+
+    .dark {
+      --background: 222.2 84% 4.9%;
+      --foreground: 210 40% 98%;
+      --card: 222.2 84% 4.9%;
+      --card-foreground: 210 40% 98%;
+      --border: 217.2 32.6% 17.5%;
+      --input: 217.2 32.6% 17.5%;
+      --primary: 217.2 91.2% 59.8%;
+      --primary-foreground: 222.2 47.4% 11.2%;
+      --secondary: 217.2 32.6% 17.5%;
+      --secondary-foreground: 210 40% 98%;
+      --accent: 217.2 32.6% 17.5%;
+      --accent-foreground: 210 40% 98%;
+      --destructive: 0 62.8% 30.6%;
+      --destructive-foreground: 210 40% 98%;
+      --ring: 224.3 76.3% 48%;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      line-height: 1.5;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+
+    .header-content {
+      display: flex;
+      align-items: center;
+    }
+
+    .header-icon {
+      margin-right: 0.5rem;
+      color: #3b82f6;
+    }
+
+    .dark .header-icon {
+      color: #60a5fa;
+    }
+
+    .title {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: hsl(var(--foreground));
+    }
+
+    .subtitle {
+      color: hsl(215.4 16.3% 46.9%);
+    }
+
+    .dark .subtitle {
+      color: hsl(215 20.2% 65.1%);
+    }
+
+    .theme-toggle {
+      background-color: hsl(var(--secondary));
+      border: none;
+      border-radius: 9999px;
+      padding: 0.5rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dark .theme-toggle {
+      background-color: hsl(var(--secondary));
+    }
+
+    .search-container {
+      position: relative;
+      margin-bottom: 1rem;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: hsl(215.4 16.3% 46.9%);
+    }
+
+    .dark .search-icon {
+      color: hsl(215 20.2% 65.1%);
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+      border: 1px solid hsl(var(--border));
+      border-radius: 0.375rem;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+    }
+
+    .dark .search-input {
+      background-color: hsl(var(--card));
+      border-color: hsl(var(--border));
+    }
+
+    .search-input::placeholder {
+      color: hsl(215.4 16.3% 46.9%);
+    }
+
+    .dark .search-input::placeholder {
+      color: hsl(215 20.2% 65.1%);
+    }
+
+    .selected-tag {
+      display: flex;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .selected-tag-label {
+      font-size: 0.875rem;
+      color: hsl(215.4 16.3% 46.9%);
+      margin-right: 0.5rem;
+    }
+
+    .dark .selected-tag-label {
+      color: hsl(215 20.2% 65.1%);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      margin-right: 0.25rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 1rem;
+    }
+
+    .timeline-date {
+      text-align: right;
+      padding-right: 1rem;
+      padding-top: 1rem;
+      color: hsl(215.4 16.3% 46.9%);
+      white-space: nowrap;
+    }
+
+    .dark .timeline-date {
+      color: hsl(215 20.2% 65.1%);
+    }
+
+    .timeline-time {
+      text-align: right;
+      padding-right: 1rem;
+      color: hsl(215.4 16.3% 46.9%);
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+    }
+
+    .dark .timeline-time {
+      color: hsl(215 20.2% 65.1%);
+    }
+
+    .timeline-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      border-left: 2px solid hsl(var(--border));
+      padding-left: 1rem;
+    }
+
+    .timeline-notes {
+      font-size: 0.875rem;
+      color: hsl(215.4 16.3% 46.9%);
+      padding-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      max-width: 200px;
+    }
+
+    .dark .timeline-notes {
+      color: hsl(215 20.2% 65.1%);
+    }
+
+    .card {
+      position: relative;
+      background-color: hsl(var(--card));
+      border-radius: 0.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      padding: 1rem;
+      border: 1px solid transparent;
+    }
+
+    .dark .card {
+      border-color: #374151;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    .card-dot {
+      position: absolute;
+      left: -1.5rem;
+      top: 1.5rem;
+      width: 1rem;
+      height: 1rem;
+      border-radius: 9999px;
+      background-color: #d1d5db;
+    }
+
+    .dark .card-dot {
+      background-color: #4b5563;
+    }
+
+    .card-header {
+      padding-bottom: 0.5rem;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      margin-bottom: 0.5rem;
+      align-items: center;
+    }
+
+    .card-time {
+      font-size: 0.875rem;
+      color: hsl(215.4 16.3% 46.9%);
+    }
+
+    .dark .card-time {
+      color: hsl(215 20.2% 65.1%);
+    }
+
+    .card-content {
+      padding-top: 0.5rem;
+    }
+
+    .card-description {
+      color: hsl(var(--card-foreground));
+      margin-bottom: 0.5rem;
+    }
+
+    .card-location, .card-channel {
+      font-size: 0.875rem;
+      color: hsl(215.4 16.3% 46.9%);
+    }
+
+    .dark .card-location, .dark .card-channel {
+      color: hsl(215 20.2% 65.1%);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-content">
+        <span class="header-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a4.5 4.5 0 0 0 0 9 4.5 4.5 0 0 1 0 9 10 10 0 0 0 0-18z"></path>
+            <path d="M12 2c-2.4 0-4.5 1.8-4.5 4.5S9.6 11 12 11"></path>
+          </svg>
+        </span>
+        <h1 class="title">${title}</h1>
+      </div>
+      <button class="theme-toggle" onclick="toggleDarkMode()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          ${
+            darkMode
+              ? `<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>`
+              : `<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>`
+          }
+        </svg>
+      </button>
+    </div>
+    <div class="search-container">
+      <span class="search-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.3-4.3"></path>
+        </svg>
+      </span>
+      <input class="search-input" type="text" placeholder="搜尋..." />
+    </div>
+    <div class="timeline">
+      ${data
+        .map(
+          (item) => `
+        <div class="timeline-date">${item.date || item.virtual_date || ""}</div>
+        <div class="timeline-content">
+          <div class="card">
+            <div class="card-dot"></div>
+            <div class="card-header">
+              <div class="card-tags">
+                ${item.subject ? `<span class="tag" style="background-color: ${item.tag_color?.主角 || "#3b82f6"}; color: white;">${item.subject}</span>` : ""}
+                ${item.action ? `<span class="card-action">${item.action}</span>` : ""}
+                ${item.object ? `<span class="tag" style="background-color: ${item.tag_color?.目標 || "#10b981"}; color: white;">${item.object}</span>` : ""}
+                ${item.topic ? `<span class="tag" style="background-color: ${item.tag_color?.主題標籤 || "#f59e0b"}; color: white;">${item.topic}</span>` : ""}
+              </div>
+            </div>
+            <div class="card-content">
+              <div class="card-description">${item.description || ""}</div>
+              ${item.location ? `<div class="card-location">${item.location_prep || "在"} ${item.location}${item.location_1_prep && item.location_1 ? ` ${item.location_1_prep} ${item.location_1}` : ""}${item.location_2_prep && item.location_2 ? ` ${item.location_2_prep} ${item.location_2}` : ""}</div>` : ""}
+              ${item.channel ? `<div class="card-channel">${item.channel_prep || "來自"} ${item.channel}</div>` : ""}
+            </div>
+          </div>
+        </div>
+        <div class="timeline-notes">${item.note || ""}</div>
+      `,
+        )
+        .join("")}
+    </div>
+  </div>
+  <script>
+    function toggleDarkMode() {
+      document.documentElement.classList.toggle("dark")
+    }
+  </script>
+</body>
+</html>
+  `
+
+    // 創建一個Blob對象
+    const blob = new Blob([standaloneHtml], { type: "text/html;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const element = document.createElement("a")
+    element.href = url
+    element.download = "timeline.html"
+    document.body.appendChild(element)
+    element.click()
+    document.body.removeChild(element)
+    URL.revokeObjectURL(url)
+  }
+
+  // 添加一個新的函數來提供更好的用戶指導
+  const displayGoogleSheetsInstructions = () => {
+    alert(getGoogleSheetsInstructions())
+  }
+
+  // 修改處理數據的函數，確保正確解析標籤顏色
+  const processData = async () => {
+    setLoading(true)
+    setError("")
+
+    try {
+      let csvData = ""
+
+      // 改進的 CORS 代理處理和錯誤處理
+      if (activeTab === "url") {
+        // 處理Google Sheets URL
+        let fetchUrl = csvUrl
+
+        // 檢查是否為Google Sheets URL並進行處理
+        if (fetchUrl.includes("docs.google.com/spreadsheets")) {
+          // 處理Google Sheets URL格式
+          fetchUrl = handleGoogleSheetsUrl(fetchUrl)
+          console.log("處理後的Google Sheets URL:", fetchUrl)
+        }
+
+        // 嘗試使用不同的方法獲取數據
+        let success = false
+        const allErrors = []
+
+        // 方法1: 嘗試直接獲取（對於已經允許CORS的URL）
+        try {
+          console.log("嘗試直接獲取數據...")
+          const response = await fetch(fetchUrl, {
+            mode: "cors",
+            credentials: "omit",
+            headers: {
+              "Content-Type": "text/csv; charset=utf-8",
+              "Accept-Charset": "utf-8",
+            },
+            cache: "no-cache",
+          })
+
+          if (response.ok) {
+            csvData = await response.text()
+            success = true
+            console.log("直接獲取數據成功")
+          } else {
+            throw new Error(`HTTP error! Status: ${response.status}`)
+          }
+        } catch (err) {
+          console.log("直接獲取失敗:", err.message)
+          allErrors.push(`直接獲取: ${err.message}`)
+          // 繼續嘗試其他方法
+        }
+
+        // 方法2: 使用多個CORS代理
+        if (!success) {
+          // 更新CORS代理列表
+          const corsProxies = [
+            "https://corsproxy.io/?",
+            "https://api.allorigins.win/raw?url=",
+            "https://thingproxy.freeboard.io/fetch/",
+            "https://api.codetabs.com/v1/proxy?quest=",
+            "https://cors-anywhere.herokuapp.com/",
+          ]
+
+          for (const proxy of corsProxies) {
+            if (success) break
+
+            try {
+              const proxyUrl = `${proxy}${encodeURIComponent(fetchUrl)}`
+              console.log(`嘗試使用代理: ${proxy}`)
+
+              const response = await fetch(proxyUrl, {
+                mode: "cors",
+                credentials: "omit",
+                headers: {
+                  "Content-Type": "text/csv; charset=utf-8",
+                  "Accept-Charset": "utf-8",
+                },
+                cache: "no-cache",
+              })
+
+              if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`)
+              }
+
+              const text = await response.text()
+              if (text && text.trim()) {
+                csvData = text
+                success = true
+                console.log(`使用代理 ${proxy} 成功獲取數據`)
+                break
+              } else {
+                throw new Error("獲取的數據為空")
+              }
+            } catch (err) {
+              console.error(`使用代理 ${proxy} 失敗:`, err.message)
+              allErrors.push(`代理 ${proxy}: ${err.message}`)
+            }
+          }
+        }
+
+        // 方法3: 對於Google Sheets，嘗試特殊處理
+        if (!success && fetchUrl.includes("docs.google.com/spreadsheets")) {
+          try {
+            console.log("嘗試使用Google Sheets特殊處理...")
+
+            // 從URL中提取文檔ID
+            let docId = ""
+            const idMatch = fetchUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)
+            if (idMatch && idMatch[1]) {
+              docId = idMatch[1]
+            } else {
+              const pubMatch = fetchUrl.match(/\/d\/e\/([a-zA-Z0-9-_]+)/)
+              if (pubMatch) {
+                docId = pubMatch[1]
+              }
+            }
+
+            if (docId) {
+              // 嘗試使用替代URL格式
+              const alternativeUrl = `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv&id=${docId}`
+              console.log("嘗試替代URL:", alternativeUrl)
+
+              const response = await fetch(alternativeUrl, {
+                mode: "cors",
+                credentials: "omit",
+                headers: {
+                  "Content-Type": "text/csv; charset=utf-8",
+                  "Accept-Charset": "utf-8",
+                },
+                cache: "no-cache",
+              })
+
+              if (response.ok) {
+                csvData = await response.text()
+                success = true
+                console.log("使用替代Google Sheets URL成功")
+              }
+            }
+          } catch (err) {
+            console.error("Google Sheets特殊處理失敗:", err.message)
+            allErrors.push(`Google Sheets特殊處理: ${err.message}`)
+          }
+        }
+
+        // 方法4: 嘗試使用Google Sheets API (如果有文檔ID)
+        if (!success && fetchUrl.includes("docs.google.com/spreadsheets")) {
+          try {
+            console.log("嘗試使用Google Sheets API...")
+
+            // 從URL中提取文檔ID
+            let docId = ""
+            let gid = "0" // 默認工作表ID
+
+            // 提取文檔ID
+            const idMatch = fetchUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)
+            if (idMatch && idMatch[1]) {
+              docId = idMatch[1]
+            }
+
+            // 提取工作表ID (gid)
+            const gidMatch = fetchUrl.match(/gid=([0-9]+)/)
+            if (gidMatch && gidMatch[1]) {
+              gid = gidMatch[1]
+            }
+
+            if (docId) {
+              // 使用Google Sheets API
+              const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${docId}/values/Sheet1?key=AIzaSyDrzDf4tSl4JTnFPZNvPnJOPje_AJ9pB2s`
+              console.log("嘗試Google Sheets API URL:", apiUrl)
+
+              const response = await fetch(apiUrl, {
+                mode: "cors",
+                credentials: "omit",
+                headers: {
+                  "Content-Type": "text/csv; charset=utf-8",
+                  "Accept-Charset": "utf-8",
+                },
+                cache: "no-cache",
+              })
+
+              if (response.ok) {
+                const data = await response.json()
+                if (data && data.values && data.values.length > 0) {
+                  // 將API響應轉換為CSV格式
+                  const headers = data.values[0]
+                  const rows = data.values.slice(1)
+
+                  let csvContent = headers.join(",") + "\n"
+                  rows.forEach((row) => {
+                    // 確保每行與標題行有相同數量的列
+                    while (row.length < headers.length) {
+                      row.push("")
+                    }
+                    csvContent += row.join(",") + "\n"
+                  })
+
+                  csvData = csvContent
+                  success = true
+                  console.log("使用Google Sheets API成功")
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Google Sheets API處理失敗:", err.message)
+            allErrors.push(`Google Sheets API: ${err.message}`)
+          }
+        }
+
+        // 如果所有方法都失敗，提供詳細的錯誤信息
+        if (!success) {
+          const errorDetails = allErrors.join("; ")
+          throw new Error(`
+          無法獲取數據。我們嘗試了多種方法但都失敗了。
+          
+          如果您使用的是Google Sheets，請確保:
+          1. 文檔已設置為"任何人都可以查看"
+          2. 已通過"檔案 > 發布到網路"發布為CSV格式
+          3. 使用發布後的URL（通常以/pub結尾）
+          
+          您也可以嘗試下載CSV文件，然後直接粘貼內容到「直接輸入CSV」選項卡中。
+          
+          技術詳情: ${errorDetails}
+        `)
+        }
+      } else {
+        // 直接使用輸入的CSV數據，但先進行清理和格式化
+        csvData = sanitizeCSVInput(csvText)
+
+        if (!csvData.trim()) {
+          throw new Error("CSV數據為空或格式不正確。請確保您的數據包含標題行和至少一行數據。")
+        }
+      }
+
+      // 在解析CSV數據之前，嘗試修復可能的編碼問題
+      // 檢查是否有BOM標記
+      if (csvData.charCodeAt(0) === 0xfeff) {
+        csvData = csvData.slice(1)
+      }
+
+      // 檢查是否有編碼問題
+      if (/[\u4e00-\u9fa5]\s+[\u4e00-\u9fa5]/.test(csvData)) {
+        console.log("檢測到可能的中文編碼問題，嘗試修復...")
+        csvData = csvData.replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, "$1$2")
+      }
+
+      // 解析CSV數據
+      if (!csvData.trim()) {
+        throw new Error("獲取的數據為空，請檢查URL或輸入的CSV數據")
+      }
+
+      // 改進CSV解析，處理UTF-8編碼和特殊字符
+      const parsedData = parseCSV(csvData)
+
+      if (parsedData.length === 0) {
+        throw new Error("解析後的數據為空，請檢查CSV格式是否正確")
+      }
+
+      setData(parsedData)
+      setShowPreview(true)
+      // 生成嵌入代碼
+      const embedCode = generateEmbedCode()
+      setEmbedCode(embedCode)
+      setLoading(false)
+    } catch (err) {
+      console.error("處理數據時出錯:", err)
+      setError(err.message || "處理數據時出錯")
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto p-4">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center">
+          <div className="text-blue-500 dark:text-blue-400 mr-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 2a4.5 4.5 0 0 0 0 9 4.5 4.5 0 0 1 0 9 10 10 0 0 0 0-18z"></path>
+              <path d="M12 2c-2.4 0-4.5 1.8-4.5 4.5S9.6 11 12 11"></path>
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h1>
+            <p className="text-gray-600 dark:text-gray-400">{subtitle}</p>
+          </div>
+        </div>
+        <Button variant="outline" onClick={() => setDarkMode(!darkMode)}>
+          {darkMode ? "切換到亮色模式" : "切換到暗色模式"}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="md:col-span-1 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>數據來源</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid grid-cols-2 mb-4">
+                  <TabsTrigger value="url">使用CSV網址</TabsTrigger>
+                  <TabsTrigger value="text">直接輸入CSV</TabsTrigger>
+                </TabsList>
+                <TabsContent value="url" className="space-y-4">
+                  <Input
+                    type="text"
+                    placeholder="輸入CSV文件的URL"
+                    value={csvUrl}
+                    onChange={(e) => setCsvUrl(e.target.value)}
+                  />
+                  <div className="flex flex-col space-y-2">
+                    <Button onClick={processData} disabled={loading} className="w-full">
+                      {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      獲取數據
+                    </Button>
+                    <Button onClick={handleUseExample} variant="outline" className="w-full">
+                      使用示例
+                    </Button>
+                    <Button onClick={displayGoogleSheetsInstructions} variant="outline" className="w-full">
+                      Google Sheets 使用說明
+                    </Button>
+                  </div>
+                </TabsContent>
+                <TabsContent value="text" className="space-y-4">
+                  <Textarea
+                    placeholder="粘貼CSV文本"
+                    value={csvText}
+                    onChange={(e) => setCsvText(e.target.value)}
+                    className="min-h-[200px]"
+                  />
+                  <div className="flex flex-col space-y-2">
+                    <Button onClick={processData} disabled={loading} className="w-full">
+                      {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      解析數據
+                    </Button>
+                    <Button onClick={handleUseExampleText} variant="outline" className="w-full">
+                      使用示例文本
+                    </Button>
+                    <Button onClick={handleDownloadTemplate} variant="outline" className="w-full">
+                      下載CSV模板
+                    </Button>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+
+          {error && (
+            <Card className="border-red-300 dark:border-red-800">
+              <CardContent className="pt-6">
+                <div className="text-red-600 dark:text-red-400 font-medium mb-2">獲取數據時出錯:</div>
+                <div className="text-sm whitespace-pre-wrap">{error}</div>
+                {error.includes("Google Sheets") && (
+                  <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-800">
+                    <div className="font-medium mb-1">Google Sheets 使用指南:</div>
+                    <ol className="list-decimal pl-5 space-y-1 text-sm">
+                      <li>確保您的文檔已設置為「任何人都可以查看」</li>
+                      <li>點擊「檔案」{">"}「發布到網路」</li>
+                      <li>選擇「整份文件」或特定工作表</li>
+                      <li>選擇「逗號分隔值 (.csv)」格式</li>
+                      <li>點擊「發布」按鈕</li>
+                      <li>使用生成的連結（應該以 /pub 結尾）</li>
+                    </ol>
+                    <div className="mt-2 flex space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setActiveTab("text")
+                          setError("")
+                        }}
+                        className="text-xs"
+                      >
+                        切換到直接輸入模式
+                      </Button>
+                      <Link href="/spreadsheet-guide">
+                        <Button variant="outline" size="sm" className="text-xs">
+                          查看詳細指南
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="flex flex-col space-y-2">
+            <Link href="/csv-format">
+              <Button variant="outline" className="w-full">
+                CSV 格式說明
+              </Button>
+            </Link>
+            <Link href="/spreadsheet-guide">
+              <Button variant="outline" className="w-full">
+                Google Sheets 使用指南
+              </Button>
+            </Link>
+            <Link href="/standalone">
+              <Button variant="outline" className="w-full">
+                下載獨立版應用
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <div className="md:col-span-2">
+          {showPreview ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>時間線預覽</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <TimelineViewer
+                  data={data}
+                  title={title}
+                  subtitle={subtitle}
+                  darkMode={darkMode}
+                  dateDisplayMode={dateDisplayMode}
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <div className="text-gray-500 dark:text-gray-400 mb-4">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="48"
+                    height="48"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="mx-auto mb-4"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <h3 className="text-lg font-medium mb-2">尚未載入數據</h3>
+                  <p>請使用左側選項輸入CSV網址或直接粘貼CSV文本</p>
+                </div>
+                <div className="flex justify-center space-x-4">
+                  <Button onClick={handleUseExample} variant="outline">
+                    使用示例數據
+                  </Button>
+                  <Button onClick={handleDownloadTemplate} variant="outline">
+                    下載CSV模板
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 嵌入代碼和下載HTML部分 */}
+          {showPreview && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>嵌入代碼</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-md mb-3 overflow-x-auto">
+                    <pre className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{embedCode}</pre>
+                  </div>
+                  <Button onClick={copyToClipboard} className="w-full">
+                    {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                    {copied ? "已複製!" : "複製嵌入代碼"}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>下載HTML</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                    下載包含時間線的獨立HTML文件，可以在任何瀏覽器中打開。
+                  </p>
+                  <Button onClick={downloadHtmlFile} className="w-full">
+                    <FileDown className="mr-2 h-4 w-4" />
+                    下載HTML文件
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
